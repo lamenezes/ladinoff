@@ -139,39 +139,43 @@ class FanFiction(models.Model):
     is_complete = models.BooleanField(default=False)
 
     @classmethod
-    def crawl_categories(cls, category_url, category):
-        current_url = ''
-        fics = {}
-        found = True
-        page_number = 1
+    def crawl_categories(cls, categories=[]):
+        search = '/?&srt=1&r=10'
+        if not categories:
+            categories = SubCategory.objects.all()
 
-        search = re.search('p=(?P<page_number>\d+)', category_url)
-        if search:
-            page_number = int(search.groupdict()['page_number'])
+        for category in categories:
+            # search = re.search('p=(?P<page_number>\d+)', category.link)
+            # if search:
+            #     page_number = int(search.groupdict()['page_number'])
 
-        while found:
-            if page_number > 1:
-                current_url = category_url + ('&p=%d' % page_number)
-            else:
-                current_url = category_url
-            try:
-                page = requests.get(current_url)
-            except requests.exceptions.ConnectionError:
-                print u'Connection Error'
-                time.sleep(10)
-                continue
-            tree = html.fromstring(page.text)
-            links = tree.xpath('//a[@class="stitle"]')
-            if not links:
-                found = False
-            links = {link.get('href'): link[0].tail for link in links}
-            fics = []
-            for link, title in links.items():
-                fic = FanFiction(title=title, link=link, category=category)
-                fics.append(fic)
-            FanFiction.objects.bulk_create(fics)
-            print 'Parsing page %d' % page_number
-            page_number += 1
+            page_number = 1
+            found = True
+            while found:
+                if page_number > 1:
+                    current_url = category.link + search + ('&p=%d' % page_number)
+                else:
+                    current_url = category.link + search
+                try:
+                    page = requests.get(current_url)
+                except requests.exceptions.ConnectionError:
+                    print u'Connection Error'
+                    time.sleep(10)
+                    continue
+                tree = html.fromstring(page.text)
+                links = tree.xpath('//a[@class="stitle"]')
+                if not links:
+                    found = False
+                    print 'Nao achei, chente'
+                links = {link.get('href'): link[0].tail for link in links}
+                fics = []
+                for link, title in links.items():
+                    fic = FanFiction(title=title, link=link, category=category)
+                    fics.append(fic)
+                FanFiction.objects.bulk_create(fics)
+                print 'Parsing page %d' % page_number
+                print fic
+                page_number += 1
 
     def crawl_fic(self):
         if self.is_complete:
