@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import datetime
 from lxml import html
 import re
 import requests
@@ -16,6 +17,10 @@ class Author(models.Model):
         app_label = 'base'
         verbose_name = u'Autor'
         verbose_name_plural = u'Autores'
+
+    def __repr__(self):
+        return '{}: {}' % (self._id, self.nickname)
+    _id = models.PositiveIntegerField(u'id', unique=True, default=0)
 
     nickname = models.CharField(max_length=64)
 
@@ -101,38 +106,34 @@ class FanFiction(models.Model):
     publish_date = models.DateField(u'Data Publicação',
                                     null=True, blank=True)
 
-    author = models.ForeignKey('Author', verbose_name='Autor',
-                               null=True, blank=True)
+    author = models.ForeignKey('Author', verbose_name='Autor', null=True, blank=True)
 
     category = models.ForeignKey('SubCategory', verbose_name=u'SubCategoria',
                                  null=True, blank=True)
 
-    rated = models.PositiveSmallIntegerField(u'Rated',
-                                    null=True, blank=True)
+    rated = models.CharField(u'Rated', max_length=32, null=True, blank=True)
 
-    language = models.CharField(u'Idioma', max_length=16,
-                                    null=True, blank=True)
+    language = models.CharField(u'Idioma', max_length=16, null=True, blank=True)
 
-    chapters = models.PositiveIntegerField(u'Capítulos',
-                                    null=True, blank=True)
+    chapters = models.PositiveIntegerField(u'Capítulos', null=True, blank=True)
 
-    words = models.PositiveIntegerField(u'Palavras',
-                                    null=True, blank=True)
+    words = models.PositiveIntegerField(u'Palavras', null=True, blank=True)
 
-    reviews = models.PositiveIntegerField(u'Reviews',
-                                    null=True, blank=True)
+    reviews = models.PositiveIntegerField(u'Reviews', null=True, blank=True)
 
-    favorites = models.PositiveIntegerField(u'Favorites',
-                                    null=True, blank=True)
+    favorites = models.PositiveIntegerField(u'Favorites', null=True, blank=True)
 
-    follows = models.PositiveIntegerField(u'Follows',
-                                    null=True, blank=True)
+    follows = models.PositiveIntegerField(u'Follows', null=True, blank=True)
 
-    first_paragraph = models.TextField(u'1o Parágrafo',
-                                    null=True, blank=True)
+    first_paragraph = models.TextField(u'1o Parágrafo', null=True, blank=True)
 
-    last_paragraph = models.TextField(u'Último Parágrafo',
-                                    null=True, blank=True)
+    last_paragraph = models.TextField(u'Último Parágrafo', null=True, blank=True)
+
+    genre = models.TextField(u'Gênero', null=True, blank=True)
+
+    ship = models.TextField(u'Ship', null=True, blank=True)
+
+    status = models.TextField(u'Status', null=True, blank=True)
 
     link = models.URLField(u'Link')
 
@@ -179,4 +180,49 @@ class FanFiction(models.Model):
 
     def crawl_fic(self):
         if self.is_complete:
-            return
+            return (self, False)
+
+        page = requests.get('http://fanfiction.net' + self.link)
+        tree = html.fromstring(page.text)
+        span = tree.find('body//span[@class="xgray xcontrast_txt"]')
+        fic_meta = span.text_content()
+        regex = ('Rated: (?P<rated>[\\w ]+) - (?P<language>\\w+) - (?P<genre>[\\w/]+) - '
+               '(?P<ship>[\[\]\\w., ]+) - Words: (?P<words>.*) - Reviews: '
+               '(?P<reviews>[\\d\\w,]+) - Favs: (?P<favorites>[\\d\\w ]+) - '
+               '(Follows: (?P<follows>[\\d\\w ]+) - )?'
+               'Published: (?P<publish_date>[\\w\\d/ ]+) - '
+               'Status: (?P<status>\w+) - id')
+        try:
+            fic_meta = re.search(regex, fic_meta).groupdict()
+            pub_date = fic_meta['publish_date']
+            fic_meta['publish_date'] = datetime.datetime.strptime(pub_date, '%d/%m/%Y')
+            fic_meta['words'] = fic_meta['words'].replace(',', '')
+            fic_meta['reviews'] = fic_meta['reviews'].replace(',', '')
+            fic_meta['favorites'] = fic_meta['favorites'].replace(',', '')
+            fic_meta['follows'] = fic_meta['follows'].replace(',', '')
+        except AttributeError:
+            return (self, False)
+
+        b = tree.find('body//b[@class="xcontrast_txt"]')
+        fic_meta['title'] = b.text_content()
+
+        for attr, val in fic_meta.items():
+            setattr(self, attr, val)
+
+        a = tree.find('body//div[@id="profile_top"]//a[@class="xcontrast_txt"]')
+        nickname = a.text_content()
+        link = a.values()[1]
+        s = re.search('/u/(?P<id>\d+)/', link)
+        _id = s.groupdict()['id']
+
+        if not self.author:
+            try:
+                author = Author.objects.get(_id=_id)
+            except Author.DoesNotExist:
+                author = Author(_id=_id, nickname=nickname, link=link)
+                author.save()
+
+        self.author = author
+        self.save()
+
+        return (self, True)
