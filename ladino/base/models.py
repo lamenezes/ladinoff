@@ -24,7 +24,7 @@ class Author(models.Model):
 
     nickname = models.CharField(max_length=64)
 
-    link = models.URLField(u'Link')
+    link = models.TextField(u'Link')
 
     join_date = models.DateField(u'Join Date', null=True, blank=True)
 
@@ -101,7 +101,7 @@ class FanFiction(models.Model):
     def __unicode__(self):
         return '(%s) %s' % (self.category, self.title)
 
-    title = models.CharField(u'Título', max_length=128)
+    title = models.TextField(u'Título')
 
     publish_date = models.DateField(u'Data Publicação',
                                     null=True, blank=True)
@@ -135,7 +135,7 @@ class FanFiction(models.Model):
 
     status = models.TextField(u'Status', null=True, blank=True)
 
-    link = models.URLField(u'Link')
+    link = models.TextField(u'Link')
 
     is_complete = models.BooleanField(default=False)
 
